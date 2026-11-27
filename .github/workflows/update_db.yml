@@ -1,0 +1,46 @@
+name: Update Search Database
+
+on:
+  schedule:
+    # 日本時間の 午後0時(12:00 = UTC 3:00) と 午前0時(0:00 = UTC 15:00) に実行
+    - cron: '0 3,15 * * *'
+  workflow_dispatch: # 手動ボタンでもいつでも実行可能
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Build 100,000 pages (10,000 x 10 batches)
+        run: |
+          for i in $(seq 1 10); do
+            echo "=== バッチ $i / 10 開始 ==="
+            if [ $i -eq 1 ]; then
+              python build_db.py
+            else
+              NO_RESET=1 python build_db.py
+            fi
+            if [ $i -lt 10 ]; then
+              echo "10秒待機します..."
+              sleep 10
+            fi
+          done
+      - name: Commit and Push search.db
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add search.db
+          if git log -1 --pretty=%B | grep -q "^Auto update search.db"; then
+            git commit --amend -m "Auto update search.db (100000 pages)" || exit 0
+            git push --force
+          else
+            git commit -m "Auto update search.db (100000 pages)" || exit 0
+            git push
+          fi
